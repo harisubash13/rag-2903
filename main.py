@@ -12,10 +12,18 @@ from parser import parse_file
 from chunker import chunk_documents
 from vector_store import VectorStore
 from gemini_client import GeminiClient
+import auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Initialize user database
+auth.init_db()
+
+# Initialize session manager and profile stores cache
+sessions = auth.SessionManager()
+profile_stores = {}
 
 # Initialize FastAPI App
 app = FastAPI(title="Minimal & Premium RAG API", version="1.0.0")
@@ -29,21 +37,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory store cache for active profiles
-profile_stores = {}
-
-def get_db(x_user_profile: Optional[str] = Header("default", alias="X-User-Profile")) -> VectorStore:
-    """Resolves and returns the VectorStore corresponding to the user profile header."""
-    profile = x_user_profile or "default"
-    # Profile sanitization is handled within VectorStore __init__
-    if profile not in profile_stores:
-        logger.info(f"Instantiating new VectorStore for user profile: {profile}")
-        profile_stores[profile] = VectorStore(profile_name=profile)
-    return profile_stores[profile]
-
-# Request model for query endpoint
+# Request models
 class QueryRequest(BaseModel):
     query: str
+
+class UserAuthRequest(BaseModel):
+    username: str
+    password: str
+
+def get_db(authorization: Optional[str] = Header(None)) -> VectorStore:
+    """
+    Resolves and returns the VectorStore corresponding to the authenticated user.
+    Requires 'Authorization: Bearer <token>' header.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication token required. Please sign in.")
+    
+    token = authorization.split(" ")[1]
+    username = sessions.get_username(token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Session expired or invalid. Please sign in again.")
+        
+    if username not in profile_stores:
+        logger.info(f"Instantiating new VectorStore for user: {username}")
+        profile_stores[username] = VectorStore(profile_name=username)
+    return profile_stores[username]
 
 def get_client(gemini_api_key_header: Optional[str] = Header(None, alias="X-Gemini-API-Key")) -> GeminiClient:
     """
@@ -59,22 +77,84 @@ def get_client(gemini_api_key_header: Optional[str] = Header(None, alias="X-Gemi
         )
     return GeminiClient(api_key=key)
 
+@app.post("/api/register")
+async def api_register(request: UserAuthRequest):
+    username = request.username.strip().lower()
+    
+    # Basic validation: only alphanumeric + underscores, max 20 chars
+    from vector_store import sanitize_profile_name
+    sanitized = sanitize_profile_name(username)
+    if not sanitized or sanitized != username:
+        raise HTTPException(
+            status_code=400,
+            detail="Username must contain only alphanumeric characters or underscores (no spaces/symbols)."
+        )
+    
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+
+    success = auth.register_user(username, request.password)
+    if not success:
+        raise HTTPException(status_code=400, detail="Username already exists or registration failed.")
+    
+    return {"message": "Registration successful. You can now log in."}
+
+@app.post("/api/login")
+async def api_login(request: UserAuthRequest):
+    username = request.username.strip().lower()
+    is_valid = auth.authenticate_user(username, request.password)
+    
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    
+    token = sessions.create_session(username)
+    return {"token": token, "username": username}
+
+@app.post("/api/logout")
+async def api_logout(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header.")
+    
+    token = authorization.split(" ")[1]
+    sessions.remove_session(token)
+    return {"message": "Logged out successfully."}
+
 @app.get("/api/status")
 async def get_status(
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-API-Key"),
-    db: VectorStore = Depends(get_db)
+    authorization: Optional[str] = Header(None),
+    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-API-Key")
 ):
     """
-    Returns system status, chunk statistics, and whether Gemini API is active.
+    Returns system status. If authenticated, returns user document statistics.
     """
     api_key_provided = bool(x_gemini_api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
     
-    return {
-        "status": "online",
-        "api_key_configured": api_key_provided,
-        "files_count": len(db.get_unique_files()),
-        "chunks_count": len(db.chunks)
-    }
+    # Resolve optional session
+    username = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        username = sessions.get_username(token)
+        
+    if username:
+        if username not in profile_stores:
+            profile_stores[username] = VectorStore(profile_name=username)
+        db = profile_stores[username]
+        return {
+            "status": "online",
+            "authenticated": True,
+            "username": username,
+            "api_key_configured": api_key_provided,
+            "files_count": len(db.get_unique_files()),
+            "chunks_count": len(db.chunks)
+        }
+    else:
+        return {
+            "status": "online",
+            "authenticated": False,
+            "api_key_configured": api_key_provided,
+            "files_count": 0,
+            "chunks_count": 0
+        }
 
 @app.post("/api/upload")
 async def upload_file(

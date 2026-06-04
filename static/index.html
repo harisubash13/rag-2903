@@ -34,23 +34,20 @@
                 </div>
             </div>
 
-            <!-- User Profile Switcher -->
-            <section class="card profile-card">
+            <!-- User Profile / Session Control -->
+            <section class="card profile-card" id="user-profile-widget" style="display: none;">
                 <div class="card-header">
                     <div class="card-title">
-                        <i data-lucide="users"></i>
-                        <span>User Profile</span>
+                        <i data-lucide="user"></i>
+                        <span>Account</span>
                     </div>
-                    <span id="active-profile-name" class="profile-name-badge">default</span>
+                    <span id="active-username" class="profile-name-badge">guest</span>
                 </div>
                 <div class="card-body">
-                    <p class="config-desc">Switch user profiles to isolate files and chat histories.</p>
-                    <div class="input-group">
-                        <input type="text" id="profile-name-input" placeholder="Profile name (e.g. mohith)" maxlength="20" autocomplete="off">
-                        <button id="switch-profile-btn" class="btn btn-primary" title="Switch/Create Profile">
-                            <i data-lucide="user-check"></i>
-                        </button>
-                    </div>
+                    <button id="logout-btn" class="btn btn-danger btn-block btn-sm">
+                        <i data-lucide="log-out"></i>
+                        <span>Sign Out</span>
+                    </button>
                 </div>
             </section>
 
@@ -205,6 +202,46 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Auth Screen Container -->
+    <div id="auth-screen" class="auth-screen-container">
+        <div class="auth-card card animate-fade-in">
+            <div class="auth-header">
+                <div class="auth-logo-wrapper">
+                    <i data-lucide="brain-circuit" class="auth-logo"></i>
+                </div>
+                <h2>OmniReader</h2>
+                <p>Retrieval-Augmented Generation Workspace</p>
+            </div>
+            
+            <!-- Login/Register Tabs -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login-btn">Sign In</button>
+                <button class="auth-tab" id="tab-register-btn">Create Account</button>
+            </div>
+            
+            <!-- Auth Form -->
+            <form id="auth-form" class="auth-form">
+                <div class="form-group">
+                    <label for="auth-username">Username</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="user"></i>
+                        <input type="text" id="auth-username" required placeholder="Enter username" autocomplete="username">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="lock"></i>
+                        <input type="password" id="auth-password" required placeholder="Enter password (min 6 characters)" autocomplete="current-password" minlength="6">
+                    </div>
+                </div>
+                <button type="submit" id="auth-submit-btn" class="btn btn-primary btn-block">
+                    <span id="auth-btn-text">Sign In</span>
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- Script -->

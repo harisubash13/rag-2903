@@ -19,6 +19,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const uploadPercent = document.getElementById("upload-percent");
     const uploadProgressBar = document.getElementById("upload-progress-bar");
     
+    // Auth elements
+    const authScreen = document.getElementById("auth-screen");
+    const authForm = document.getElementById("auth-form");
+    const authUsernameInput = document.getElementById("auth-username");
+    const authPasswordInput = document.getElementById("auth-password");
+    const authSubmitBtn = document.getElementById("auth-submit-btn");
+    const authBtnText = document.getElementById("auth-btn-text");
+    const tabLoginBtn = document.getElementById("tab-login-btn");
+    const tabRegisterBtn = document.getElementById("tab-register-btn");
+    
+    const userProfileWidget = document.getElementById("user-profile-widget");
+    const activeUsername = document.getElementById("active-username");
+    const logoutBtn = document.getElementById("logout-btn");
+    
     const filesList = document.getElementById("files-list");
     const filesCount = document.getElementById("files-count");
     const clearDbBtn = document.getElementById("clear-db-btn");
@@ -35,57 +49,150 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Global State
     let apiKey = localStorage.getItem("gemini_api_key") || "";
-    let activeProfile = localStorage.getItem("active_profile") || "default";
+    let authToken = localStorage.getItem("auth_token") || "";
+    let authUsername = localStorage.getItem("auth_username") || "";
     let isGenerating = false;
+    let authMode = "login"; // "login" or "register"
 
     // Initialize UI
     if (apiKey) {
         apiKeyInput.value = apiKey;
     }
-    activeProfileName.textContent = activeProfile;
     
     // Configure Lucide Icons
     lucide.createIcons();
 
-    // Check backend status and load initial files
-    checkSystemStatus();
-    loadFilesList();
+    // Check login state
+    if (authToken && authUsername) {
+        showMainApp();
+    } else {
+        showAuthScreen();
+    }
+
+    function showMainApp() {
+        authScreen.style.display = "none";
+        userProfileWidget.style.display = "block";
+        activeUsername.textContent = authUsername;
+        checkSystemStatus();
+        loadFilesList();
+    }
+
+    function showAuthScreen() {
+        authScreen.style.display = "flex";
+        userProfileWidget.style.display = "none";
+        sendBtn.disabled = true;
+    }
 
     // 1. API Configuration Logic
     toggleConfig.addEventListener("click", () => {
         configCard.classList.toggle("collapsed");
     });
 
-    // Profile Switcher Logic
-    switchProfileBtn.addEventListener("click", () => {
-        const profileVal = profileNameInput.value.trim().toLowerCase();
-        if (!profileVal) {
-            showToast("Please enter a valid profile name", "error");
+    // Auth Form & Tabs Toggle Logic
+    tabLoginBtn.addEventListener("click", () => {
+        authMode = "login";
+        tabLoginBtn.classList.add("active");
+        tabRegisterBtn.classList.remove("active");
+        authBtnText.textContent = "Sign In";
+        authPasswordInput.placeholder = "Enter password";
+    });
+
+    tabRegisterBtn.addEventListener("click", () => {
+        authMode = "register";
+        tabRegisterBtn.classList.add("active");
+        tabLoginBtn.classList.remove("active");
+        authBtnText.textContent = "Create Account";
+        authPasswordInput.placeholder = "Enter password (min 6 characters)";
+    });
+
+    authForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const username = authUsernameInput.value.trim().toLowerCase();
+        const password = authPasswordInput.value;
+
+        if (password.length < 6) {
+            showToast("Password must be at least 6 characters.", "error");
             return;
         }
+
+        authSubmitBtn.disabled = true;
         
-        // Sanitize name: alphanumeric and underscores only
-        const sanitized = profileVal.replace(/[^a-zA-Z0-9_]/g, "");
-        if (!sanitized) {
-            showToast("Profile name must contain alphanumeric characters or underscores only", "error");
-            return;
+        try {
+            const endpoint = authMode === "login" ? "/api/login" : "/api/register";
+            const res = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (authMode === "login") {
+                    authToken = data.token;
+                    authUsername = data.username;
+                    localStorage.setItem("auth_token", authToken);
+                    localStorage.setItem("auth_username", authUsername);
+                    
+                    showToast(`Welcome back, ${authUsername}!`, "success");
+                    showMainApp();
+                    
+                    // Clear inputs
+                    authUsernameInput.value = "";
+                    authPasswordInput.value = "";
+                } else {
+                    showToast("Registration successful! Please sign in.", "success");
+                    // Switch to login tab automatically
+                    tabLoginBtn.click();
+                    authPasswordInput.value = "";
+                }
+            } else {
+                let errorMsg = "Authentication failed.";
+                try {
+                    const errData = await res.json();
+                    errorMsg = errData.detail || errorMsg;
+                } catch(e) {}
+                showToast(errorMsg, "error");
+            }
+        } catch (err) {
+            console.error("Auth error:", err);
+            showToast("Connection to authentication server failed.", "error");
+        } finally {
+            authSubmitBtn.disabled = false;
+        }
+    });
+
+    // Logout Logic
+    logoutBtn.addEventListener("click", async () => {
+        if (!confirm("Are you sure you want to sign out?")) return;
+        
+        try {
+            await fetch("/api/logout", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${authToken}` }
+            });
+        } catch(e) {
+            console.warn("Failed to invalidate session token on server:", e);
         }
         
-        activeProfile = sanitized;
-        localStorage.setItem("active_profile", activeProfile);
-        activeProfileName.textContent = activeProfile;
-        profileNameInput.value = "";
+        // Local cleanup
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_username");
+        authToken = "";
+        authUsername = "";
         
-        showToast(`Switched to profile: ${activeProfile}`, "success");
-        
-        // Clear chat and return to welcome screen
+        // Clear chat console
         const messageBubbles = chatMessages.querySelectorAll(".message");
         messageBubbles.forEach(msg => msg.remove());
         welcomeScreen.style.display = "flex";
         
-        // Refresh state for new profile
-        checkSystemStatus();
-        loadFilesList();
+        // Reset stats
+        statFiles.textContent = "0 files";
+        statChunks.textContent = "0 chunks";
+        filesCount.textContent = "0";
+        
+        renderFilesList([]);
+        showToast("Signed out successfully.", "success");
+        showAuthScreen();
     });
 
     saveKeyBtn.addEventListener("click", () => {
@@ -108,9 +215,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function checkSystemStatus() {
         try {
-            const headers = {
-                "X-User-Profile": activeProfile
-            };
+            const headers = {};
+            if (authToken) {
+                headers["Authorization"] = `Bearer ${authToken}`;
+            }
             if (apiKey) {
                 headers["X-Gemini-API-Key"] = apiKey;
             }
@@ -241,7 +349,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             xhr.open("POST", "/api/upload");
-            xhr.setRequestHeader("X-User-Profile", activeProfile);
+            xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
             if (apiKey) {
                 xhr.setRequestHeader("X-Gemini-API-Key", apiKey);
             }
@@ -253,7 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadFilesList() {
         try {
             const res = await fetch("/api/files", {
-                headers: { "X-User-Profile": activeProfile }
+                headers: { "Authorization": `Bearer ${authToken}` }
             });
             if (res.ok) {
                 const files = await res.json();
@@ -304,14 +412,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     clearDbBtn.addEventListener("click", async () => {
-        if (!confirm("Are you sure you want to reset the vector database for this profile? All ingested files and indexed chunks will be deleted permanently.")) {
+        if (!confirm("Are you sure you want to reset the vector database for this account? All ingested files and indexed chunks will be deleted permanently.")) {
             return;
         }
         
         try {
             const res = await fetch("/api/clear", { 
                 method: "POST",
-                headers: { "X-User-Profile": activeProfile }
+                headers: { "Authorization": `Bearer ${authToken}` }
             });
             if (res.ok) {
                 showToast("Database successfully cleared.", "success");
@@ -370,9 +478,11 @@ document.addEventListener("DOMContentLoaded", () => {
         
         try {
             const headers = { 
-                "Content-Type": "application/json",
-                "X-User-Profile": activeProfile
+                "Content-Type": "application/json"
             };
+            if (authToken) {
+                headers["Authorization"] = `Bearer ${authToken}`;
+            }
             if (apiKey) {
                 headers["X-Gemini-API-Key"] = apiKey;
             }
