@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Caching/Vector Store Files
+rag_store_*.json
+test_rag_store.json
+
+# Environments
+.env
+.venv/
+venv/
+env/
+ENV/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System Files
+.DS_Store
+Thumbs.db

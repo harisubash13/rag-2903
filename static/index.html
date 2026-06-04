@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniReader | Minimalist Premium RAG System</title>
+    <meta name="description" content="A premium, lightweight Retrieval-Augmented Generation system. Upload PDFs, Excel spreadsheets, and text files to query and chat with your data offline or via Gemini.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Highlight.js for Code Highlighting in Markdown -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/assets/style.css">
+    <!-- Lucide Icons for clean look -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Marked JS for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Dashboard -->
+        <aside class="sidebar">
+            <!-- App Logo / Branding -->
+            <div class="brand">
+                <div class="logo-icon">
+                    <i data-lucide="brain-circuit"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>OmniReader</h1>
+                    <span class="badge">RAG System v1.0</span>
+                </div>
+            </div>
+
+            <!-- User Profile Switcher -->
+            <section class="card profile-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i data-lucide="users"></i>
+                        <span>User Profile</span>
+                    </div>
+                    <span id="active-profile-name" class="profile-name-badge">default</span>
+                </div>
+                <div class="card-body">
+                    <p class="config-desc">Switch user profiles to isolate files and chat histories.</p>
+                    <div class="input-group">
+                        <input type="text" id="profile-name-input" placeholder="Profile name (e.g. mohith)" maxlength="20" autocomplete="off">
+                        <button id="switch-profile-btn" class="btn btn-primary" title="Switch/Create Profile">
+                            <i data-lucide="user-check"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- API Key Manager -->
+            <section class="card config-card">
+                <div class="card-header" id="toggle-config">
+                    <div class="card-title">
+                        <i data-lucide="key-round"></i>
+                        <span>Gemini Configuration</span>
+                    </div>
+                    <i data-lucide="chevron-down" class="toggle-icon"></i>
+                </div>
+                <div class="card-body collapsible" id="config-body">
+                    <p class="config-desc">Enter your Gemini API key to enable document indexing and search. Keys are saved locally in your browser.</p>
+                    <div class="input-group">
+                        <input type="password" id="api-key-input" placeholder="AIzaSy..." autocomplete="off">
+                        <button id="save-key-btn" class="btn btn-primary" title="Save API Key">
+                            <i data-lucide="save"></i>
+                        </button>
+                    </div>
+                    <div class="status-indicator-wrapper">
+                        <span class="status-label">API Status:</span>
+                        <span id="api-status-badge" class="badge badge-error">Disconnected</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Document Ingestion Area -->
+            <section class="card upload-card flex-grow">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i data-lucide="file-up"></i>
+                        <span>Document Ingestion</span>
+                    </div>
+                </div>
+                <div class="card-body flex-column">
+                    <!-- Drop Zone -->
+                    <div id="drop-zone" class="drop-zone">
+                        <i data-lucide="upload-cloud" class="upload-icon"></i>
+                        <p class="drop-title">Drag & Drop Files</p>
+                        <p class="drop-subtitle">Supports .pdf, .xlsx, .txt</p>
+                        <input type="file" id="file-input" multiple accept=".pdf,.xlsx,.txt" style="display: none;">
+                        <button type="button" id="browse-btn" class="btn btn-secondary btn-sm">Browse Files</button>
+                    </div>
+
+                    <!-- Upload Progress -->
+                    <div id="upload-progress-container" class="upload-progress-container" style="display: none;">
+                        <div class="progress-info">
+                            <span id="upload-filename">document.pdf</span>
+                            <span id="upload-percent">0%</span>
+                        </div>
+                        <div class="progress-bar-wrapper">
+                            <div id="upload-progress-bar" class="progress-bar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Ingested Files List -->
+                    <div class="files-list-header">
+                        <span>Ingested Documents</span>
+                        <span id="files-count" class="files-count-badge">0</span>
+                    </div>
+                    <div id="files-list" class="files-list">
+                        <!-- Dynamic list of uploaded files -->
+                        <div class="empty-files-message">
+                            <i data-lucide="files" class="watermark-icon"></i>
+                            <p>No documents ingested yet</p>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="sidebar-actions">
+                        <button id="clear-db-btn" class="btn btn-danger btn-block" disabled>
+                            <i data-lucide="trash-2"></i>
+                            <span>Reset Vector Database</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="main-content">
+            <!-- Top Navbar -->
+            <header class="navbar">
+                <div class="nav-left">
+                    <h2>Chat Console</h2>
+                </div>
+                <div class="nav-right">
+                    <div class="system-stats">
+                        <div class="stat-item" title="Unique files uploaded">
+                            <i data-lucide="file-text"></i>
+                            <span id="stat-files">0 files</span>
+                        </div>
+                        <div class="stat-item" title="Document chunks indexed">
+                            <i data-lucide="layers"></i>
+                            <span id="stat-chunks">0 chunks</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat Console Area -->
+            <div class="chat-console">
+                <!-- Chat Message Area -->
+                <div id="chat-messages" class="chat-messages">
+                    <!-- Default Welcome / Setup State -->
+                    <div class="welcome-screen" id="welcome-screen">
+                        <div class="welcome-branding">
+                            <i data-lucide="sparkles" class="welcome-icon"></i>
+                            <h2>How can I help you digest your data?</h2>
+                            <p>Upload your document files (.pdf, .xlsx, .txt) in the sidebar, configure your Gemini key, and begin querying. The RAG system will answer questions based only on your content.</p>
+                        </div>
+                        
+                        <!-- Suggestion Chips -->
+                        <div class="suggestion-section">
+                            <p class="suggestion-title">Try these prompts after uploading:</p>
+                            <div class="suggestion-grid">
+                                <button class="suggestion-chip" data-prompt="Can you summarize the main contents of the uploaded files?">
+                                    <i data-lucide="info"></i>
+                                    <span>Summarize my documents</span>
+                                </button>
+                                <button class="suggestion-chip" data-prompt="What are the key statistical trends or tables found in the Excel files?">
+                                    <i data-lucide="bar-chart-2"></i>
+                                    <span>Find Excel data trends</span>
+                                </button>
+                                <button class="suggestion-chip" data-prompt="List the key terms, names, and concepts mentioned in these documents.">
+                                    <i data-lucide="list-collapse"></i>
+                                    <span>Extract key terms & concepts</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Input Controls -->
+                <div class="chat-input-container">
+                    <form id="chat-form" class="chat-form">
+                        <textarea 
+                            id="chat-input" 
+                            placeholder="Ask a question about your ingested documents..." 
+                            rows="1" 
+                            required
+                        ></textarea>
+                        <button type="submit" id="send-btn" class="btn btn-primary btn-circle" disabled title="Send Query">
+                            <i data-lucide="send"></i>
+                        </button>
+                    </form>
+                    <div class="chat-footer-note">
+                        <i data-lucide="shield-check"></i>
+                        <span>Answers are generated by cross-referencing your uploaded files using vector search</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script -->
+    <script src="/assets/app.js"></script>
+</body>
+</html>
